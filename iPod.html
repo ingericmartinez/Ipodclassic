@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de iPod Classic</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <style>
+        :root {
+            --ipod-bg: linear-gradient(to bottom, #e0e0e0, #c0c0c0); /* Light gray gradient */
+            --screen-bg: #c1d5e0; /* Light blueish screen */
+            --screen-border: #333;
+            --wheel-color: #d8d8d8;
+            --wheel-border: #aaa;
+            --center-button-bg: #b0b0b0;
+            --text-color: #333;
+            --highlight-bg: #3478f6; /* iPod blue highlight */
+            --highlight-text: #fff;
+            --headphone-cable: #f0f0f0;
+            --earbud: #fff;
+        }
+
+        body {
+            background-color: #333; /* Dark background to contrast */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            overflow: hidden; /* Prevent scrolling */
+        }
+
+        .ipod-container {
+            position: relative;
+            width: 300px;
+            height: 500px;
+        }
+
+        /* iPod Body */
+        .ipod-body {
+            width: 100%;
+            height: 100%;
+            background: var(--ipod-bg);
+            border-radius: 25px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3), inset 0 1px 1px rgba(255, 255, 255, 0.5);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Screen */
+        .screen {
+            width: 90%;
+            height: 40%;
+            background-color: var(--screen-bg);
+            border: 4px solid var(--screen-border);
+            border-radius: 5px;
+            margin-bottom: 25px;
+            overflow: hidden;
+            position: relative;
+            box-shadow: inset 0 0 10px rgba(0,0,0,0.2);
+        }
+
+        .screen-content {
+            padding: 10px;
+            color: var(--text-color);
+            height: 100%;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .screen-header {
+            font-weight: bold;
+            text-align: center;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #aaa;
+            margin-bottom: 5px;
+            font-size: 14px;
+            color: var(--text-color);
+        }
+
+        .menu-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            flex-grow: 1;
+            overflow-y: auto; /* Allows scrolling if needed, though wheel controls it */
+             scrollbar-width: none; /* Firefox */
+        }
+        .menu-list::-webkit-scrollbar { display: none; } /* Chrome/Safari */
+
+
+        .menu-item {
+            padding: 4px 8px;
+            font-size: 14px;
+            border-radius: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .menu-item.selected {
+            background-color: var(--highlight-bg);
+            color: var(--highlight-text);
+        }
+
+        .now-playing-view {
+            text-align: center;
+            padding-top: 20px;
+        }
+        .now-playing-view .title {
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 5px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .now-playing-view .artist {
+            font-size: 14px;
+            color: #555;
+            margin-bottom: 15px;
+        }
+        .now-playing-view .status-icon {
+            font-size: 24px;
+        }
+
+
+        /* Click Wheel Area */
+        .click-wheel-area {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-grow: 1; /* Take remaining space */
+        }
+
+        .click-wheel {
+            width: 160px;
+            height: 160px;
+            background-color: var(--wheel-color);
+            border: 1px solid var(--wheel-border);
+            border-radius: 50%;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer; /* Indicate interactivity */
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2), inset 0 0 10px rgba(0,0,0,0.1);
+            user-select: none; /* Prevent text selection */
+        }
+
+        .center-button {
+            width: 60px;
+            height: 60px;
+            background-color: var(--center-button-bg);
+            border: 1px solid #999;
+            border-radius: 50%;
+            position: absolute;
+            cursor: pointer;
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.2);
+            transition: background-color 0.1s;
+        }
+        .center-button:active {
+            background-color: #959595; /* Darker when pressed */
+        }
+
+        /* Optional: Text labels on wheel (can be tricky with rotation) */
+        .wheel-label {
+            position: absolute;
+            font-size: 10px;
+            font-weight: bold;
+            color: #555;
+        }
+        .label-menu { top: 10px; }
+        .label-play { bottom: 10px; }
+        .label-prev { left: 10px; transform: rotate(-90deg); transform-origin: left center;}
+        .label-next { right: 10px; transform: rotate(90deg); transform-origin: right center;}
+
+
+        /* Headphones */
+        .headphones {
+            position: absolute;
+            bottom: -120px; /* Position below the iPod */
+            left: 50%;
+            transform: translateX(-50%);
+            width: 150px; /* Adjust as needed */
+            height: 150px;
+            z-index: 5;
+            pointer-events: none; /* Don't interfere with clicks */
+        }
+
+        .headphone-cable {
+            position: absolute;
+            bottom: 100%; /* Start from top of headphone container */
+            left: 50%;
+            transform: translateX(-50%);
+            width: 3px;
+            height: 40px; /* Cable length from iPod */
+            background-color: var(--headphone-cable);
+            box-shadow: 1px 0 1px rgba(0,0,0,0.2);
+        }
+
+        .earbud {
+            position: absolute;
+            width: 20px;
+            height: 30px;
+            background-color: var(--earbud);
+            border-radius: 50% 50% 30% 30% / 60% 60% 40% 40%; /* Earbud shape */
+            box-shadow: inset 0 -2px 3px rgba(0,0,0,0.15);
+        }
+
+        .earbud-left {
+            bottom: 10px;
+            left: 10px;
+            transform: rotate(-30deg);
+        }
+        .earbud-left::after { /* Cable to earbud */
+            content: '';
+            position: absolute;
+            bottom: 5px;
+            right: -15px;
+            width: 20px;
+            height: 2px;
+            background-color: var(--headphone-cable);
+            transform: rotate(20deg);
+            border-radius: 2px;
+        }
+
+
+        .earbud-right {
+            bottom: 10px;
+            right: 10px;
+            transform: rotate(30deg);
+        }
+         .earbud-right::after { /* Cable to earbud */
+            content: '';
+            position: absolute;
+            bottom: 5px;
+            left: -15px;
+            width: 20px;
+            height: 2px;
+            background-color: var(--headphone-cable);
+            transform: rotate(-20deg);
+            border-radius: 2px;
+        }
+
+        /* Basic cable curve simulation */
+        .headphone-cable-curve {
+            position: absolute;
+            bottom: 30px; /* Adjust vertical position */
+            left: 50%;
+            width: 120px;
+            height: 80px;
+            border: 3px solid var(--headphone-cable);
+            border-color: transparent transparent var(--headphone-cable) transparent; /* Bottom border only */
+            border-radius: 50%;
+            transform: translateX(-50%) rotate(180deg); /* Flip the arc */
+            box-shadow: 0 2px 1px rgba(0,0,0,0.2);
+        }
+
+
+    </style>
+</head>
+<body>
+    <div class="ipod-container">
+        <div class="ipod-body">
+            <div class="screen">
+                <div class="screen-content">
+                    <div class="screen-header" id="screenHeader">Música</div>
+                    <ul class="menu-list" id="menuList">
+                        </ul>
+                    <div class="now-playing-view" id="nowPlayingView" style="display: none;">
+                        <div class="status-icon" id="statusIcon">▶️</div> <div class="title" id="nowPlayingTitle">---</div>
+                        <div class="artist" id="nowPlayingArtist">---</div>
+                        <div class="progress-bar-container" style="height: 5px; background: #aaa; border-radius: 3px; overflow: hidden; margin-top: 10px;">
+                            <div id="progressBar" style="width: 0%; height: 100%; background: var(--text-color); transition: width 0.1s linear;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="click-wheel-area">
+                <div class="click-wheel" id="clickWheel">
+                    <div class="center-button" id="centerButton"></div>
+                </div>
+            </div>
+        </div>
+        <div class="headphones">
+            <div class="headphone-cable"></div>
+            <div class="headphone-cable-curve"></div>
+            <div class="earbud earbud-left"></div>
+            <div class="earbud earbud-right"></div>
+        </div>
+    </div>
+
+    <audio id="audioPlayer"></audio>
+
+    <script>
+        const songs = [
+            { title: "Canción Uno", artist: "Artista A", /* src: 'URL_DE_TU_CANCION_1.mp3' */ },
+            { title: "Otra Canción Más", artist: "Artista B", /* src: 'URL_DE_TU_CANCION_2.mp3' */ },
+            { title: "Pista Número Tres", artist: "Artista C", /* src: 'URL_DE_TU_CANCION_3.mp3' */ },
+            { title: "Melodía Cuatro", artist: "Artista A", /* src: 'URL_DE_TU_CANCION_4.mp3' */ },
+            { title: "Sonido Cinco", artist: "Artista D", /* src: 'URL_DE_TU_CANCION_5.mp3' */ },
+            { title: "Track Seis", artist: "Artista B", /* src: 'URL_DE_TU_CANCION_6.mp3' */ },
+            { title: "La Séptima Canción", artist: "Artista E", /* src: 'URL_DE_TU_CANCION_7.mp3' */ },
+            { title: "Ocho Veces", artist: "Artista C", /* src: 'URL_DE_TU_CANCION_8.mp3' */ },
+            { title: "Nueve Vidas", artist: "Artista F", /* src: 'URL_DE_TU_CANCION_9.mp3' */ },
+            { title: "El Final Diez", artist: "Artista G", /* src: 'URL_DE_TU_CANCION_10.mp3' */ },
+        ];
+
+        // DOM Elements
+        const menuList = document.getElementById('menuList');
+        const clickWheel = document.getElementById('clickWheel');
+        const centerButton = document.getElementById('centerButton');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const screenHeader = document.getElementById('screenHeader');
+        const nowPlayingView = document.getElementById('nowPlayingView');
+        const nowPlayingTitle = document.getElementById('nowPlayingTitle');
+        const nowPlayingArtist = document.getElementById('nowPlayingArtist');
+        const statusIcon = document.getElementById('statusIcon');
+        const progressBar = document.getElementById('progressBar');
+
+
+        // State Variables
+        let currentMenuIndex = 0;
+        let currentSongIndex = -1; // -1 means nothing selected/playing initially
+        let isPlaying = false;
+        let isDragging = false;
+        let startAngle = 0;
+        let currentAngle = 0;
+        let accumulatedAngle = 0;
+        let viewMode = 'menu'; // 'menu' or 'nowPlaying'
+
+        // Tone.js Synths for UI sounds
+        let uiClickSynth = null;
+        let scrollSynth = null;
+
+        // --- Initialize Audio Context and Synths ---
+        function initializeAudio() {
+            if (typeof Tone !== 'undefined') {
+                if (!uiClickSynth) {
+                    uiClickSynth = new Tone.Synth({
+                        oscillator: { type: 'square' },
+                        envelope: { attack: 0.001, decay: 0.05, sustain: 0, release: 0.1 }
+                    }).toDestination();
+                }
+                 if (!scrollSynth) {
+                     // Slightly different sound for scrolling
+                     scrollSynth = new Tone.Synth({
+                        oscillator: { type: 'triangle' },
+                        envelope: { attack: 0.001, decay: 0.03, sustain: 0, release: 0.05 },
+                        volume: -15 // Quieter scroll sound
+                    }).toDestination();
+                }
+                console.log("Tone.js Synths created.");
+            }
+        }
+
+        // --- Play UI Sounds ---
+        function playClickSound() {
+             if (!uiClickSynth) initializeAudio();
+             if (uiClickSynth && Tone.context.state === 'running') {
+                 uiClickSynth.triggerAttackRelease('C6', '50n', Tone.now());
+             } else if (typeof Tone !== 'undefined' && Tone.context.state !== 'running') {
+                 Tone.start(); // Attempt to start on interaction
+             }
+        }
+        function playScrollSound() {
+             if (!scrollSynth) initializeAudio();
+             if (scrollSynth && Tone.context.state === 'running') {
+                 scrollSynth.triggerAttackRelease('A5', '60n', Tone.now());
+             } else if (typeof Tone !== 'undefined' && Tone.context.state !== 'running') {
+                 Tone.start();
+             }
+        }
+
+
+        // --- Render Menu ---
+        function renderMenu() {
+            menuList.innerHTML = ''; // Clear previous items
+            songs.forEach((song, index) => {
+                const li = document.createElement('li');
+                li.classList.add('menu-item');
+                li.textContent = song.title;
+                if (index === currentMenuIndex) {
+                    li.classList.add('selected');
+                    // Scroll into view if needed
+                    li.scrollIntoView({ block: 'nearest' });
+                }
+                menuList.appendChild(li);
+            });
+        }
+
+        // --- Update Now Playing View ---
+        function updateNowPlaying(songIndex) {
+            if (songIndex >= 0 && songIndex < songs.length) {
+                const song = songs[songIndex];
+                nowPlayingTitle.textContent = song.title;
+                nowPlayingArtist.textContent = song.artist;
+                // Try to load the audio source
+                if (song.src) {
+                    audioPlayer.src = song.src;
+                } else {
+                    console.warn(`Audio source missing for: ${song.title}`);
+                    audioPlayer.removeAttribute('src'); // Clear source if missing
+                }
+            } else {
+                nowPlayingTitle.textContent = "---";
+                nowPlayingArtist.textContent = "---";
+                audioPlayer.removeAttribute('src');
+            }
+             updatePlayPauseIcon();
+             updateProgressBar(); // Reset progress bar
+        }
+
+        function updatePlayPauseIcon() {
+             statusIcon.textContent = isPlaying ? '⏸️' : '▶️';
+        }
+
+        function updateProgressBar() {
+            if (isPlaying && audioPlayer.duration) {
+                const percentage = (audioPlayer.currentTime / audioPlayer.duration) * 100;
+                progressBar.style.width = `${percentage}%`;
+            } else {
+                 progressBar.style.width = '0%';
+            }
+        }
+
+        // --- Switch Views ---
+        function switchView(newMode) {
+            viewMode = newMode;
+            if (viewMode === 'menu') {
+                menuList.style.display = 'block';
+                nowPlayingView.style.display = 'none';
+                screenHeader.textContent = "Música";
+                renderMenu(); // Re-render menu to show selection
+            } else { // 'nowPlaying'
+                menuList.style.display = 'none';
+                nowPlayingView.style.display = 'block';
+                screenHeader.textContent = "Ahora Suena";
+                updateNowPlaying(currentSongIndex);
+            }
+        }
+
+        // --- Audio Controls ---
+        function playSong(songIndex) {
+            if (songIndex >= 0 && songIndex < songs.length) {
+                currentSongIndex = songIndex;
+                updateNowPlaying(songIndex);
+                if (audioPlayer.src) { // Only play if source exists
+                    audioPlayer.play().then(() => {
+                        isPlaying = true;
+                        updatePlayPauseIcon();
+                        console.log("Playing:", songs[currentSongIndex].title);
+                    }).catch(error => {
+                        console.error("Error playing audio:", error);
+                        isPlaying = false;
+                        updatePlayPauseIcon();
+                        // Optionally show an error to the user
+                    });
+                } else {
+                    // Simulate playback with Tone.js if no real audio
+                    // This is very basic, just a repeating tone
+                    console.log("Simulating playback (no audio src):", songs[currentSongIndex].title);
+                     isPlaying = true; // Set state even for simulation
+                     updatePlayPauseIcon();
+                     // You could add a Tone.js loop here if desired
+                }
+                 switchView('nowPlaying'); // Switch to now playing view
+            }
+        }
+
+        function pauseSong() {
+            audioPlayer.pause();
+            isPlaying = false;
+            updatePlayPauseIcon();
+            console.log("Paused");
+             // Stop any Tone.js simulation loop if you added one
+        }
+
+        function togglePlayPause() {
+            if (currentSongIndex === -1) { // Nothing selected yet
+                playSong(currentMenuIndex); // Play the highlighted song
+            } else { // A song is selected or was playing
+                if (isPlaying) {
+                    pauseSong();
+                } else {
+                    // If currentSongIndex is valid, resume it
+                    if (currentSongIndex >= 0 && currentSongIndex < songs.length) {
+                         if (audioPlayer.src) {
+                             audioPlayer.play().then(() => {
+                                isPlaying = true;
+                                updatePlayPauseIcon();
+                            }).catch(error => console.error("Error resuming audio:", error));
+                         } else {
+                             // Re-start simulation if needed
+                             isPlaying = true;
+                             updatePlayPauseIcon();
+                         }
+                    } else {
+                        // If somehow currentSongIndex is invalid, play the menu selection
+                        playSong(currentMenuIndex);
+                    }
+                }
+            }
+        }
+
+
+        // --- Click Wheel Logic ---
+        function getAngle(event) {
+            const rect = clickWheel.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            // Use pageX/pageY for broader compatibility including touch
+            const clientX = event.touches ? event.touches[0].pageX : event.pageX;
+            const clientY = event.touches ? event.touches[0].pageY : event.pageY;
+            const angle = Math.atan2(clientY - centerY, clientX - centerX);
+            return angle; // Radians
+        }
+
+        function handleWheelInteraction(event) {
+             if (!isDragging) return;
+             event.preventDefault(); // Prevent page scroll on touch devices
+
+             const newAngle = getAngle(event);
+             let deltaAngle = newAngle - currentAngle;
+
+             // Handle angle wrap-around (crossing Math.PI/-Math.PI)
+             if (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
+             if (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
+
+             accumulatedAngle += deltaAngle;
+             currentAngle = newAngle; // Update current angle
+
+             // Define sensitivity: how much angle change triggers a menu move
+             const scrollThreshold = Math.PI / 8; // Adjust sensitivity here (smaller = more sensitive)
+
+             if (Math.abs(accumulatedAngle) >= scrollThreshold) {
+                 const previousMenuIndex = currentMenuIndex;
+                 if (accumulatedAngle > 0) { // Clockwise
+                     currentMenuIndex = (currentMenuIndex + 1) % songs.length;
+                 } else { // Counter-clockwise
+                     currentMenuIndex = (currentMenuIndex - 1 + songs.length) % songs.length;
+                 }
+                 accumulatedAngle = 0; // Reset accumulator
+
+                 if (previousMenuIndex !== currentMenuIndex) {
+                     playScrollSound();
+                     renderMenu(); // Update menu highlighting
+                 }
+             }
+        }
+
+        // --- Event Listeners ---
+        clickWheel.addEventListener('mousedown', (event) => {
+            if (event.target === clickWheel) { // Only start drag on the wheel itself
+                 initializeAudio(); // Ensure audio context is ready
+                 Tone.start(); // Attempt to start/resume
+                 isDragging = true;
+                 startAngle = getAngle(event);
+                 currentAngle = startAngle;
+                 accumulatedAngle = 0;
+                 clickWheel.style.cursor = 'grabbing'; // Change cursor
+                 // Add listeners to window for movement and mouseup
+                 window.addEventListener('mousemove', handleWheelInteraction);
+                 window.addEventListener('mouseup', stopDragging);
+                 // Touch equivalents
+                 window.addEventListener('touchmove', handleWheelInteraction, { passive: false });
+                 window.addEventListener('touchend', stopDragging);
+            }
+        });
+         // Touch start equivalent for mousedown
+         clickWheel.addEventListener('touchstart', (event) => {
+             if (event.target === clickWheel) {
+                 initializeAudio();
+                 Tone.start();
+                 isDragging = true;
+                 startAngle = getAngle(event);
+                 currentAngle = startAngle;
+                 accumulatedAngle = 0;
+                 // Add listeners to window for movement and mouseup
+                 window.addEventListener('touchmove', handleWheelInteraction, { passive: false });
+                 window.addEventListener('touchend', stopDragging);
+             }
+         }, { passive: true }); // Allow default touch behavior initially
+
+
+        function stopDragging() {
+            if (isDragging) {
+                isDragging = false;
+                clickWheel.style.cursor = 'pointer'; // Restore cursor
+                window.removeEventListener('mousemove', handleWheelInteraction);
+                window.removeEventListener('mouseup', stopDragging);
+                window.removeEventListener('touchmove', handleWheelInteraction);
+                window.removeEventListener('touchend', stopDragging);
+                console.log("Stopped dragging");
+            }
+        }
+
+        centerButton.addEventListener('click', () => {
+            playClickSound();
+            if (viewMode === 'menu') {
+                playSong(currentMenuIndex); // Select and play the highlighted song
+            } else { // In nowPlaying view
+                togglePlayPause();
+            }
+        });
+
+        // Listener for 'Menu' button (simulated by clicking wheel top?)
+        // Or add a dedicated MENU label/area if desired
+        // For simplicity, we'll use a double-click on center button to go back to menu
+        let lastClickTime = 0;
+        centerButton.addEventListener('dblclick', (e) => {
+             e.preventDefault(); // Prevent interfering with single click
+             console.log("Double click detected (MENU)");
+             playClickSound();
+             switchView('menu');
+        });
+        // Fallback for devices that don't handle dblclick well
+         centerButton.addEventListener('click', () => {
+             const now = Date.now();
+             if (now - lastClickTime < 300) { // 300ms threshold for double click
+                 console.log("Manual Double click detected (MENU)");
+                 playClickSound();
+                 switchView('menu');
+             }
+             lastClickTime = now;
+         });
+
+
+        // Audio Player Events
+        audioPlayer.addEventListener('timeupdate', updateProgressBar);
+        audioPlayer.addEventListener('ended', () => {
+            console.log("Song ended");
+            isPlaying = false;
+            updatePlayPauseIcon();
+            updateProgressBar(); // Reset progress bar
+            // Optional: Auto-play next song
+            // currentMenuIndex = (currentSongIndex + 1) % songs.length;
+            // playSong(currentMenuIndex);
+        });
+         audioPlayer.addEventListener('error', (e) => {
+            console.error("Audio Player Error:", e);
+            isPlaying = false;
+            updatePlayPauseIcon();
+            updateProgressBar();
+            nowPlayingTitle.textContent = "Error al cargar";
+            nowPlayingArtist.textContent = songs[currentSongIndex]?.title || "---";
+         });
+
+
+        // --- Initial Setup ---
+        renderMenu(); // Initial render of the menu
+        // Try to initialize audio context early if possible (may still require interaction)
+        window.addEventListener('load', () => {
+             if (typeof Tone !== 'undefined' && Tone.context.state !== 'running') {
+                 console.log("AudioContext needs user interaction (click/touch/key) to start.");
+             } else {
+                 initializeAudio(); // Pre-initialize synths if context is already running
+             }
+        });
+
+    </script>
+</body>
+</html>
